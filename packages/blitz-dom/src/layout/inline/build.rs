@@ -118,42 +118,6 @@ pub(crate) fn build_inline_layout_into(
     text_layout.text = builder.build_into(&mut text_layout.layout);
     return;
 
-    /// Whether `node_id` contributes anything to an inline formatting context:
-    /// non-blank text, or an element other than a forced line break.
-    fn renders_inline_content(nodes: &crate::NodeTree, node_id: NodeId) -> bool {
-        let node = &nodes[node_id];
-        match &node.data {
-            NodeData::Text(data) => !data.content.trim().is_empty(),
-            NodeData::Element(element_data) | NodeData::AnonymousBlock(element_data) => {
-                *element_data.name.local != local_name!("br")
-            }
-            _ => false,
-        }
-    }
-
-    /// Whether this `<br>` ends its parent's inline content, in which case it
-    /// terminates the line box it sits in rather than opening another.
-    ///
-    /// The inline builder walks children one at a time and has no lookahead, so
-    /// the question is answered from the tree: no following sibling contributes
-    /// content, and at least one preceding sibling does.
-    fn is_trailing_break(nodes: &crate::NodeTree, node_id: NodeId) -> bool {
-        let Some(parent_id) = nodes[node_id].parent else {
-            return false;
-        };
-        let siblings = &nodes[parent_id].children;
-        let Some(index) = siblings.iter().position(|id| *id == node_id) else {
-            return false;
-        };
-        let has_prior = siblings[..index]
-            .iter()
-            .any(|id| renders_inline_content(nodes, *id));
-        let has_following = siblings[index + 1..]
-            .iter()
-            .any(|id| renders_inline_content(nodes, *id));
-        has_prior && !has_following
-    }
-
     fn build_inline_layout_recursive(
         builder: &mut TreeBuilder<TextBrush>,
         text_transformer: &mut TextTransformer,
@@ -250,21 +214,6 @@ pub(crate) fn build_inline_layout_into(
                         } else if *tag_name == local_name!("br") {
                             // node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
                             // TODO: update span id for br spans
-                            //
-                            // A break that ends its parent's inline content
-                            // terminates the current line box instead of opening
-                            // a new one, so N trailing breaks produce N-1 extra
-                            // lines (CSS 2.1 §9.4.2). Without this, a block
-                            // whose content ends in a break is one line too tall,
-                            // and `<p>a<br><br></p>` is three lines instead of
-                            // two.
-                            //
-                            // A block whose *only* content is a break keeps its
-                            // single line box, so the break is dropped only when
-                            // something precedes it.
-                            if is_trailing_break(nodes, node_id) {
-                                return;
-                            }
                             builder.push_style_modification_span(&[
                                 parley::StyleProperty::WhiteSpaceCollapse(
                                     WhiteSpaceCollapse::Preserve,

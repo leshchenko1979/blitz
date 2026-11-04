@@ -3,7 +3,7 @@ name: verify-br
 on:
   workflow_dispatch:
   push:
-    branches: [verify/br]
+    branches: ["**"]
 
 jobs:
   test:
